@@ -1,6 +1,5 @@
 from bs4 import BeautifulSoup
 import requests
-#file = open("C:/Users/charg/Desktop/Coding/Python/text.txt", "w")
 
 
 def find_stocks():
