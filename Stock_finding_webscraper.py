@@ -1,6 +1,5 @@
 from bs4 import BeautifulSoup
 import requests
-#file = open("C:/Users/charg/Desktop/Coding/Python/text.txt", "w")
 
 
 def find_stocks():
@@ -18,7 +17,7 @@ def find_stocks():
                 percent_change = float(element_list[2].text.replace('%', ''))   #pulls the price % change from the list
                 volume = element_list[3].text                                   #pulls the price volume from the list, this was tricky because i had millions which had the M and . , then less than 1M it only had a ,
 
-                def convert_volume(vol):                                        #the purpose of this function is to intake the volume from the site and spit out an integer
+                def convert_volume(vol):                                        #the purpose of this function is to intake the volume from the site and return an integer
                     if 'M' in vol:                                              #checking if the volume is in the millions
                         vol = vol.replace('.', '')                              #removing the period, because you cant have an integer with a .
                         vol = vol.replace('M', '')                              #removing the M, because you cant have an integer with a M
