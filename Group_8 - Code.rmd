@@ -1,0 +1,239 @@
+---
+title: "Group 8 Project"
+author: "Alex Haffner, Erica Winters & Chris Hargis"
+output: pdf_document
+---
+Our strategy is to use a logistic regression model that is easy to build and maintain. The purpose of this model will be to predict and classify customers that will churn or will not churn. This model can use a single, several or all the variables from a given data set to return a binary output. This strategy will work well because we can determine the important criteria for customer churn for ABC Wireless Inc. and can provide us insight on which areas of the business to focus attention. 
+
+
+```{r}
+df = read.csv("C:/Users/charg/Desktop/Masters/Churn_Train.csv")
+```
+
+**Data Exploratory Analysis**
+
+See the ratio of the target variable "churn". We can see here that we have enough variability of the target variable (churn)
+
+```{r}
+table(df$churn)
+```
+
+Checking for NAs. 
+```{r}
+summary(df)
+```
+
+Removing the NA values and see the ratio of no's and yes's.
+We need to make sure we have variance in our target variable
+
+```{r}
+library(tidyr)
+df = df[!is.na(df$number_vmail_messages),]
+df = df[!is.na(df$account_length),]
+df = df[!is.na(df$total_eve_minutes),]
+df = df[!is.na(df$total_intl_calls),]
+table(df$churn)
+```
+
+Using random forest to see the importance of the variables. The higher the value the more important. 
+
+```{r}
+#install.packages("randomForest")
+library(randomForest)
+df$churn <- as.factor(df$churn)
+variable_importance = randomForest(churn ~ account_length + number_vmail_messages +
+total_day_minutes + total_day_calls + total_day_charge + total_eve_minutes +
+total_eve_calls + total_eve_charge + total_night_minutes + total_night_calls +
+total_night_charge + total_intl_minutes + total_intl_calls + total_intl_charge +
+number_customer_service_calls + international_plan + voice_mail_plan + state + area_code, 
+data = df)
+randomForest::importance(variable_importance)
+```
+
+Another method to visually see the important variables. This will be important
+as it will tell us which variable(s) are best to use in our model. Using all the variables
+can result to over-fitting. 
+
+```{r}
+varImpPlot(variable_importance)
+```
+
+Below we can see that total day charges & number of customer service calls increases
+the more likely the customers are to churn.
+
+```{r}
+par(mfrow = c(1, 2))
+plot(churn ~ total_day_charge, data = df)
+plot(churn ~ number_customer_service_calls, data = df)
+```
+
+
+Create training and test sample sets:
+
+Create Training Set:
+```{r}
+no_churn_df = df[which(df$churn == "no"), ]
+yes_churn_df = df[which(df$churn == "yes"), ]
+```
+
+Create training set of data
+```{r}
+set.seed(9)
+training_data_1 = sample(1:nrow(no_churn_df), 0.9*nrow(no_churn_df))
+training_data_2 = sample(1:nrow(yes_churn_df), 0.9*nrow(yes_churn_df))
+training_1 = no_churn_df[training_data_1, ]
+training_2 = yes_churn_df[training_data_2, ]
+training_data = rbind(training_1, training_2)
+```
+
+
+Creating the Test Set
+```{r}
+test_1 = no_churn_df[-training_data_1, ]    #the opposite of what the training data was
+test_2 = yes_churn_df[-training_data_2, ]
+test_data = rbind(test_1, test_2)
+```
+
+
+**Building the Model**
+
+We are using the top variable "total_day_charge". We discovered through examining the results
+of the AIC/BIC and confusion matrix efficiency that using only 1 variable resulted in a highly 
+accurate model. 
+
+```{r}
+model = glm(churn ~ total_day_charge, data = training_data, family = "binomial")
+```
+
+
+
+Creation of a Confusion Matrix for the training data. This is important because
+if the model does poorly here we need to go back to the drawing board for our model. 
+Starting with a cutoff value of .17 as that is the ratio of yes's/no's in our data set.
+```{r}
+training_data$Predict = as.factor(ifelse(model$fitted.values > 0.17, "yes", "no"))
+table1 = table(training_data$churn, training_data$Predict)
+rownames(table1) = c("Observed negative", "Observed positive")
+colnames(table1) = c("Predicted negative", "Predicted positive")
+table1
+```
+
+
+Looping through different options for the cutoff values to see which yields the higher confusion matrix efficiency
+
+```{r}
+cutoff_test = c(.17, .20, .23, .25, .27, .3, .33)
+for (i in cutoff_test){
+  training_data$Predict = as.factor(ifelse(model$fitted.values > i, "yes", "no"))
+  table1 = table(training_data$churn, training_data$Predict)
+  efficiency = round(sum(diag(table1))/sum(table1), 2)
+  print(paste0("Training CM efficiency with the cutoff as ", i, " is equal to: ", efficiency))
+}
+```
+
+
+Viewing the confusion matrix for the best option. (.27)
+
+Cutoffs of .3 & .33 has the highest efficiency however we want to ensure we have a 
+good balance of yes's and no's in our predictions to ensure we are minimizing
+wasted incentives  along with maximizing accurate predictions
+```{r}
+#install.packages("yardstick")
+#install.packages("ggplot2")
+library(yardstick)
+library(ggplot2)
+training_data$Predict = as.factor(ifelse(model$fitted.values > 0.27, "yes", "no"))
+truth <- data.frame(
+  obs = training_data$churn,
+  pred1 = training_data$Predict)
+truth$obs <- as.factor(truth$obs)
+truth$pred1 <- as.factor(truth$pred1)
+cm <- conf_mat(truth, obs, pred1)
+autoplot(cm, type = "heatmap") +
+  scale_fill_gradient(low="#D6EAF8",high = "#2E86C1") + theme(legend.position = "right")
+```
+
+Using the test data for predictions
+```{r}
+predicted = predict(model, test_data, type = "response")
+test_data$Predicted = as.factor(ifelse(predicted > 0.27, "yes", "no"))
+
+```
+
+Viewing the predicted probalities to ensure our formatting is correct
+
+```{r}
+predicted[0:10]
+```
+
+```{r}
+truth2 <- data.frame(
+  obs = test_data$churn,
+  pred1 = test_data$Predicted)
+truth2$obs <- as.factor(test_data$churn)
+truth2$pred1 <- as.factor(test_data$Predicted)
+cm <- conf_mat(truth2, obs, pred1)
+autoplot(cm, type = "heatmap") +
+  scale_fill_gradient(low="#D6EAF8",high = "#2E86C1") + theme(legend.position = "right")
+```
+
+Test Confusion Matrix Efficiency
+```{r}
+table2 = table(test_data$churn, test_data$Predicted)
+efficiency = round(sum(diag(table2))/sum(table2), 2)
+print(paste0("Test CM efficiency is: ", efficiency))
+```
+
+Here we wanted to test different training percentages to examine the different 
+efficiencies. 
+
+```{r}
+training_percentages = c(.65, .70, .75, .80, .85, .90)
+for (i in training_percentages){
+  set.seed(9)
+  training_data_1 = sample(1:nrow(no_churn_df), i*nrow(no_churn_df))
+  training_data_2 = sample(1:nrow(yes_churn_df), i*nrow(yes_churn_df))
+  training_1 = no_churn_df[training_data_1, ]
+  training_2 = yes_churn_df[training_data_2, ]
+  training_data = rbind(training_1, training_2)
+  test_1 = no_churn_df[-training_data_1, ]
+  test_2 = yes_churn_df[-training_data_2, ]
+  test_data = rbind(test_1, test_2)
+  model = glm(churn ~ total_day_charge, data = test_data, family = "binomial")
+  test_data$Predicted = as.factor(ifelse(model$fitted.values > 0.27, "yes", "no"))
+  table2 = table(test_data$churn, test_data$Predicted)
+  efficiency = round(sum(diag(table2))/sum(table2), 2)
+  print(paste0("Test CM efficiency for a training percent of: ", i , "% is: " , efficiency))
+}
+```
+
+**Evaluating the model**
+
+```{r}
+model_summary = summary(model)
+model_summary$coefficients
+```
+
+Akaike's & Bayesian Information Criteria. We want these to be as low as possible.
+
+```{r}
+paste0("Akaike's score: ", round(AIC(model), 0))
+paste0("Bayesian's score: ", round(BIC(model), 0))
+```
+
+Seeing the P-value for total_day_charge. It is not statistically significant given
+its not under .05 however we have support from the forest chart and from testing that
+this variable is the most significant and can very accurately predict customer churn. 
+
+```{r}
+anova(model, test = "Chisq")
+```
+
+
+Using our model to predict churn probabilities for customers. 
+```{r}
+#Churn_Prob<-predict(model, newdata=Customers_To_Predict, type = 'response') 
+
+#save(Churn_Prob, file = "Group_8.RData")
+
+```
